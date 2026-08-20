@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import type { Zone } from "@/lib/zones";
+import { useEffect, useState } from "react";
+import {
+  setDuration,
+  setSchedule,
+  startZone,
+  stopZone,
+  type Zone,
+} from "@/lib/zones";
 
 const DAY_LABELS = ["D", "L", "M", "X", "J", "V", "S"];
 
@@ -13,8 +19,6 @@ function remainingLabel(runsUntil: number | null, now: number): string {
 }
 
 export function ZoneCard({ zone, onChange }: { zone: Zone; onChange: (zone: Zone) => void }) {
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -23,28 +27,11 @@ export function ZoneCard({ zone, onChange }: { zone: Zone; onChange: (zone: Zone
     return () => clearInterval(timer);
   }, [zone.running]);
 
-  function patch(update: Record<string, unknown>) {
-    setError(null);
-    startTransition(async () => {
-      const response = await fetch(`/api/zones/${zone.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(update),
-      });
-      if (!response.ok) {
-        setError("No se pudo actualizar la zona");
-        return;
-      }
-      const data = (await response.json()) as { zone: Zone };
-      onChange(data.zone);
-    });
-  }
-
   function toggleDay(day: number) {
     const days = zone.schedule.days.includes(day)
       ? zone.schedule.days.filter((value) => value !== day)
-      : [...zone.schedule.days, day];
-    patch({ schedule: { days } });
+      : [...zone.schedule.days, day].sort((a, b) => a - b);
+    onChange(setSchedule(zone, { days }));
   }
 
   return (
@@ -68,9 +55,8 @@ export function ZoneCard({ zone, onChange }: { zone: Zone; onChange: (zone: Zone
 
       <button
         type="button"
-        disabled={pending}
-        onClick={() => patch({ running: !zone.running })}
-        className={`mt-4 w-full rounded-xl px-4 py-3 text-base font-medium text-white transition disabled:opacity-60 ${
+        onClick={() => onChange(zone.running ? stopZone(zone) : startZone(zone))}
+        className={`mt-4 w-full rounded-xl px-4 py-3 text-base font-medium text-white transition ${
           zone.running ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"
         }`}
       >
@@ -86,8 +72,7 @@ export function ZoneCard({ zone, onChange }: { zone: Zone; onChange: (zone: Zone
           min={1}
           max={120}
           value={zone.durationMinutes}
-          disabled={pending}
-          onChange={(event) => patch({ durationMinutes: Number(event.target.value) })}
+          onChange={(event) => onChange(setDuration(zone, Number(event.target.value)))}
           className="mt-2 w-full accent-emerald-600"
         />
       </label>
@@ -99,8 +84,7 @@ export function ZoneCard({ zone, onChange }: { zone: Zone; onChange: (zone: Zone
             <input
               type="checkbox"
               checked={zone.schedule.enabled}
-              disabled={pending}
-              onChange={(event) => patch({ schedule: { enabled: event.target.checked } })}
+              onChange={(event) => onChange(setSchedule(zone, { enabled: event.target.checked }))}
               className="h-4 w-4 accent-emerald-600"
             />
             Activa
@@ -111,8 +95,7 @@ export function ZoneCard({ zone, onChange }: { zone: Zone; onChange: (zone: Zone
           <input
             type="time"
             value={zone.schedule.startTime}
-            disabled={pending}
-            onChange={(event) => patch({ schedule: { startTime: event.target.value } })}
+            onChange={(event) => onChange(setSchedule(zone, { startTime: event.target.value }))}
             className="rounded-lg border border-black/15 bg-transparent px-3 py-2 text-sm dark:border-white/20"
           />
           <div className="flex flex-wrap gap-1">
@@ -120,7 +103,6 @@ export function ZoneCard({ zone, onChange }: { zone: Zone; onChange: (zone: Zone
               <button
                 key={day}
                 type="button"
-                disabled={pending}
                 onClick={() => toggleDay(day)}
                 className={`h-8 w-8 rounded-full text-xs font-medium transition ${
                   zone.schedule.days.includes(day)
@@ -134,8 +116,6 @@ export function ZoneCard({ zone, onChange }: { zone: Zone; onChange: (zone: Zone
           </div>
         </div>
       </div>
-
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </section>
   );
 }

@@ -1,6 +1,3 @@
-import { promises as fs } from "fs";
-import path from "path";
-
 export type Zone = {
   id: string;
   name: string;
@@ -21,9 +18,9 @@ export type Schedule = {
   days: number[];
 };
 
-const DATA_FILE = path.join(process.cwd(), "data", "zones.json");
+const STORAGE_KEY = "riego.zones.v1";
 
-const DEFAULT_ZONES: Zone[] = [
+export const DEFAULT_ZONES: Zone[] = [
   {
     id: "zona-1",
     name: "Zona 1",
@@ -53,83 +50,51 @@ const DEFAULT_ZONES: Zone[] = [
   },
 ];
 
-/** Fallback used when the filesystem is read-only (e.g. serverless hosting). */
-let memoryZones: Zone[] | null = null;
-
-async function readZones(): Promise<Zone[]> {
-  if (memoryZones) return memoryZones;
+export function loadZones(): Zone[] {
   try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    return JSON.parse(raw) as Zone[];
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_ZONES;
+    return expireRuns(JSON.parse(raw) as Zone[]);
   } catch {
-    await writeZones(DEFAULT_ZONES);
     return DEFAULT_ZONES;
   }
 }
 
-async function writeZones(zones: Zone[]): Promise<void> {
+export function saveZones(zones: Zone[]): void {
   try {
-    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-    await fs.writeFile(DATA_FILE, JSON.stringify(zones, null, 2), "utf8");
-    memoryZones = null;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(zones));
   } catch {
-    memoryZones = zones;
+    // Storage unavailable (private mode); state stays in memory only.
   }
 }
 
 /** Stops zones whose manual run window has elapsed. */
-function expireRuns(zones: Zone[]): { zones: Zone[]; changed: boolean } {
+export function expireRuns(zones: Zone[]): Zone[] {
   const now = Date.now();
-  let changed = false;
-  const next = zones.map((zone) => {
-    if (zone.running && zone.runsUntil !== null && zone.runsUntil <= now) {
-      changed = true;
-      return { ...zone, running: false, runsUntil: null, lastWateredAt: zone.runsUntil };
-    }
-    return zone;
-  });
-  return { zones: next, changed };
+  return zones.map((zone) =>
+    zone.running && zone.runsUntil !== null && zone.runsUntil <= now
+      ? { ...zone, running: false, runsUntil: null, lastWateredAt: zone.runsUntil }
+      : zone,
+  );
 }
 
-export async function listZones(): Promise<Zone[]> {
-  const { zones, changed } = expireRuns(await readZones());
-  if (changed) await writeZones(zones);
-  return zones;
+export function startZone(zone: Zone): Zone {
+  return { ...zone, running: true, runsUntil: Date.now() + zone.durationMinutes * 60_000 };
 }
 
-export type ZoneUpdate = {
-  running?: boolean;
-  durationMinutes?: number;
-  schedule?: Partial<Schedule>;
-};
+export function stopZone(zone: Zone): Zone {
+  return { ...zone, running: false, runsUntil: null, lastWateredAt: Date.now() };
+}
 
-export async function updateZone(id: string, update: ZoneUpdate): Promise<Zone | null> {
-  const zones = (await listZones()).slice();
-  const index = zones.findIndex((zone) => zone.id === id);
-  if (index === -1) return null;
-
-  const current = zones[index];
-  const durationMinutes = update.durationMinutes ?? current.durationMinutes;
-  const next: Zone = {
-    ...current,
-    durationMinutes,
-    schedule: { ...current.schedule, ...update.schedule },
+export function setDuration(zone: Zone, durationMinutes: number): Zone {
+  const minutes = Math.min(240, Math.max(1, Math.round(durationMinutes)));
+  return {
+    ...zone,
+    durationMinutes: minutes,
+    runsUntil: zone.running ? Date.now() + minutes * 60_000 : zone.runsUntil,
   };
+}
 
-  if (update.running !== undefined && update.running !== current.running) {
-    if (update.running) {
-      next.running = true;
-      next.runsUntil = Date.now() + durationMinutes * 60_000;
-    } else {
-      next.running = false;
-      next.runsUntil = null;
-      next.lastWateredAt = Date.now();
-    }
-  } else if (next.running && update.durationMinutes !== undefined) {
-    next.runsUntil = Date.now() + durationMinutes * 60_000;
-  }
-
-  zones[index] = next;
-  await writeZones(zones);
-  return next;
+export function setSchedule(zone: Zone, schedule: Partial<Schedule>): Zone {
+  return { ...zone, schedule: { ...zone.schedule, ...schedule } };
 }

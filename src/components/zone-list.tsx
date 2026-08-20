@@ -1,29 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { Zone } from "@/lib/zones";
+import { useEffect, useSyncExternalStore } from "react";
+import {
+  getServerSnapshot,
+  getSnapshot,
+  replaceZone,
+  subscribe,
+  tick,
+} from "@/lib/zone-store";
 import { ZoneCard } from "@/components/zone-card";
 
-const REFRESH_MS = 10_000;
-
-export function ZoneList({ initialZones }: { initialZones: Zone[] }) {
-  const [zones, setZones] = useState(initialZones);
-
-  const refresh = useCallback(async () => {
-    const response = await fetch("/api/zones", { cache: "no-store" });
-    if (!response.ok) return;
-    const data = (await response.json()) as { zones: Zone[] };
-    setZones(data.zones);
-  }, []);
+export function ZoneList() {
+  const zones = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   useEffect(() => {
-    const timer = setInterval(refresh, REFRESH_MS);
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [refresh]);
-
-  function handleChange(updated: Zone) {
-    setZones((current) => current.map((zone) => (zone.id === updated.id ? updated : zone)));
-  }
+  }, []);
 
   const running = zones.filter((zone) => zone.running).length;
 
@@ -34,7 +27,7 @@ export function ZoneList({ initialZones }: { initialZones: Zone[] }) {
       </p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {zones.map((zone) => (
-          <ZoneCard key={zone.id} zone={zone} onChange={handleChange} />
+          <ZoneCard key={zone.id} zone={zone} onChange={replaceZone} />
         ))}
       </div>
     </>
