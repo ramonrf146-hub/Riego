@@ -25,8 +25,8 @@ const DATA_FILE = path.join(process.cwd(), "data", "zones.json");
 
 const DEFAULT_ZONES: Zone[] = [
   {
-    id: "huerta",
-    name: "Huerta",
+    id: "zona-1",
+    name: "Zona 1",
     running: false,
     durationMinutes: 15,
     runsUntil: null,
@@ -34,8 +34,8 @@ const DEFAULT_ZONES: Zone[] = [
     lastWateredAt: null,
   },
   {
-    id: "cesped",
-    name: "Césped",
+    id: "zona-2",
+    name: "Zona 2",
     running: false,
     durationMinutes: 20,
     runsUntil: null,
@@ -43,8 +43,8 @@ const DEFAULT_ZONES: Zone[] = [
     lastWateredAt: null,
   },
   {
-    id: "invernadero",
-    name: "Invernadero",
+    id: "zona-3",
+    name: "Zona 3",
     running: false,
     durationMinutes: 10,
     runsUntil: null,
