@@ -53,7 +53,11 @@ const DEFAULT_ZONES: Zone[] = [
   },
 ];
 
+/** Fallback used when the filesystem is read-only (e.g. serverless hosting). */
+let memoryZones: Zone[] | null = null;
+
 async function readZones(): Promise<Zone[]> {
+  if (memoryZones) return memoryZones;
   try {
     const raw = await fs.readFile(DATA_FILE, "utf8");
     return JSON.parse(raw) as Zone[];
@@ -64,8 +68,13 @@ async function readZones(): Promise<Zone[]> {
 }
 
 async function writeZones(zones: Zone[]): Promise<void> {
-  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify(zones, null, 2), "utf8");
+  try {
+    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
+    await fs.writeFile(DATA_FILE, JSON.stringify(zones, null, 2), "utf8");
+    memoryZones = null;
+  } catch {
+    memoryZones = zones;
+  }
 }
 
 /** Stops zones whose manual run window has elapsed. */
