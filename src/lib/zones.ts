@@ -19,6 +19,7 @@ export type Schedule = {
 };
 
 const STORAGE_KEY = "riego.zones.v1";
+const BACKEND_KEY = "riego.backend.v1";
 
 export const DEFAULT_ZONES: Zone[] = [
   {
@@ -65,6 +66,23 @@ export function saveZones(zones: Zone[]): void {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(zones));
   } catch {
     // Storage unavailable (private mode); state stays in memory only.
+  }
+}
+
+/** Base URL of the Node-RED instance driving the Modbus actuators. */
+export function loadBackendUrl(): string {
+  try {
+    return window.localStorage.getItem(BACKEND_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveBackendUrl(url: string): void {
+  try {
+    window.localStorage.setItem(BACKEND_KEY, url);
+  } catch {
+    // Ignore: the URL simply won't survive a reload.
   }
 }
 

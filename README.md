@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Riego
 
-## Getting Started
+Control de riego desde la PC o el teléfono. La web (Next.js, export estático) muestra las zonas,
+permite regar a demanda y programar horarios; Node-RED ejecuta las órdenes sobre relés Modbus.
 
-First, run the development server:
+Demo (sin actuadores, estado en el navegador): https://ramonrf146-hub.github.io/Riego/
+
+## Desarrollo
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev     # http://localhost:3000
+npm run lint
+npm run build   # genera la web estática en out/
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Conectar con Node-RED y Modbus
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 1. Node-RED
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Instalar Node-RED y el nodo Modbus:
+   ```bash
+   npm install -g --unsafe-perm node-red
+   cd ~/.node-red && npm install node-red-contrib-modbus
+   ```
+2. Importar `node-red/riego-flow.json` (menú ☰ → Import → clipboard) y hacer Deploy.
+3. En el nodo de configuración **PLC riego** poner el host y puerto del esclavo Modbus TCP
+   (o cambiar `clienttype` a serial y elegir el puerto `/dev/ttyUSB0` si el conversor es RS-485).
 
-## Learn More
+El flow expone:
 
-To learn more about Next.js, take a look at the following resources:
+| Endpoint | Uso |
+| --- | --- |
+| `GET /riego/estado` | Estado de todas las zonas |
+| `POST /riego/zona/:id` | `{ running, durationMinutes, schedule }` |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+El nodo **Relé de zona** (`modbus-flex-write`) escribe la coil correspondiente con función 5.
+El mapa zona → coil está en la función **Zonas por defecto**:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```js
+const COILS = { 'zona-1': 0, 'zona-2': 1, 'zona-3': 2 };
+```
 
-## Deploy on Vercel
+Node-RED es el dueño del estado: corta el riego al vencer la duración y arranca las zonas
+programadas, así que sigue regando aunque no haya ningún navegador abierto.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. La web
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Abrir la app, desplegar el indicador de conexión debajo del título y cargar la URL de Node-RED
+(por ejemplo `http://192.168.1.50:1880`). Se guarda en el navegador. Sin URL, la app funciona sola
+y guarda el estado localmente (modo maqueta).
+
+> **Importante:** un navegador no deja que una página HTTPS (GitHub Pages) llame a un Node-RED por
+> HTTP en la LAN. Para uso real conviene servir la web desde el propio Node-RED: copiar el contenido
+> de `out/` a una carpeta y apuntar `httpStatic` en `~/.node-red/settings.js`:
+>
+> ```js
+> httpStatic: '/home/pi/riego-web/',
+> ```
+>
+> Luego se entra por `http://IP-del-Node-RED:1880/` desde la PC o el teléfono.
+> Para ese caso conviene construir sin prefijo de ruta: `npm run build` (sin `NEXT_PUBLIC_BASE_PATH`).
+
+### 3. Hardware
+
+- Módulo de relés Modbus TCP (o RTU + conversor RS-485/USB), una coil por electroválvula.
+- Electroválvulas de 24 V AC/DC con su fuente; los relés solo conmutan, no alimentan.
+- Verificar el `unitid` (por defecto 1) y las direcciones de coil del módulo antes de regar de verdad.
+
+## Deploy
+
+Cada push a `main` publica `out/` en GitHub Pages mediante `.github/workflows/deploy.yml`.
